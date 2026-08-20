@@ -194,7 +194,7 @@
     }
 
     .qty-input {
-        width: 70px;
+        width: 60px;
         padding: 8px;
         font-size: 16px;
         text-align: center;
@@ -203,8 +203,28 @@
     }
 
     .unit-text {
-        font-size: 14px;
+        font-size: 13px;
         color: #555;
+        min-width: 32px;
+    }
+
+    .btn-kosong {
+        background: #ffebee;
+        color: #c62828;
+        border: 1px solid #ffcdd2;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .btn-kosong:hover {
+        background: #ef5350;
+        color: white;
+        border-color: #ef5350;
     }
 
     /* Modal */
@@ -415,6 +435,7 @@
                 <div class="input-group">
                     <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" oninput="updateQty('${prod.id}', this.value)">
                     <span class="unit-text">${prod.unit}</span>
+                    <button class="btn-kosong" onclick="setKosong('${prod.id}')">Kosong</button>
                 </div>
             `;
             listContainer.appendChild(card);
@@ -440,6 +461,10 @@
         }
         saveInventory();
         renderList();
+    }
+
+    function setKosong(productId) {
+        updateQty(productId, 0);
     }
 
     function resetCurrentWeek() {
