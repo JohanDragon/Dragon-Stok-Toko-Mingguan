@@ -17,6 +17,8 @@
         --success-bg: #e8f5e9;
         --warning: #c62828;
         --warning-bg: #ffebee;
+        --alert: #e65100;
+        --alert-bg: #fff3e0;
     }
 
     body {
@@ -159,6 +161,11 @@
         border-left-color: var(--warning);
     }
 
+    .product-card.low-stock {
+        border-left-color: var(--alert) !important;
+        background-color: #fffaf5;
+    }
+
     .product-info {
         flex: 1;
         padding-right: 10px;
@@ -175,17 +182,25 @@
         color: #666;
     }
 
+    .badge-group {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 4px;
+    }
+
     .badge {
         display: inline-block;
         padding: 3px 8px;
         border-radius: 12px;
         font-size: 12px;
         font-weight: bold;
-        margin-top: 4px;
     }
 
     .badge-checked { background: var(--success-bg); color: var(--success); }
     .badge-unchecked { background: var(--warning-bg); color: var(--warning); }
+    .badge-alert { background: var(--alert-bg); color: var(--alert); border: 1px solid #ffe0b2; }
 
     .input-group {
         display: flex;
@@ -302,6 +317,7 @@
             <option value="all">Semua Produk</option>
             <option value="unchecked">Belum Diperiksa</option>
             <option value="checked">Sudah Diperiksa</option>
+            <option value="low_stock">⚠️ Stok Menipis</option>
         </select>
         <button class="btn btn-primary" onclick="openAddModal()">+ Tambah Produk</button>
     </div>
@@ -333,6 +349,10 @@
             <label>Satuan</label>
             <input type="text" id="newUnit" placeholder="Contoh: ekor, kg, sak" value="ekor">
         </div>
+        <div class="form-group">
+            <label>Batas Stok Minimum (Peringatan / Alert)</label>
+            <input type="number" id="newMinAlert" placeholder="Contoh: 5 (Kosongkan jika tidak perlu)" min="0">
+        </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
             <button class="btn btn-secondary" onclick="closeAddModal()">Batal</button>
             <button class="btn btn-primary" onclick="saveNewProduct()">Simpan</button>
@@ -342,11 +362,11 @@
 
 <script>
     const defaultProducts = [
-        { id: '101', name: 'Kohaku 20-25cm', category: 'Kolam A', unit: 'ekor' },
-        { id: '102', name: 'Taisho Sanke 30-35cm', category: 'Kolam B', unit: 'ekor' },
-        { id: '103', name: 'Showa Sanshoku 35-40cm', category: 'Kolam B', unit: 'ekor' },
-        { id: '104', name: 'Pakan Koi High Growth 5kg', category: 'Pakan', unit: 'sak' },
-        { id: '105', name: 'Obat Karantina / Bakterisida 1L', category: 'Obat & Vitamin', unit: 'botol' }
+        { id: '101', name: 'Kohaku 20-25cm', category: 'Kolam A', unit: 'ekor', minAlert: 10 },
+        { id: '102', name: 'Taisho Sanke 30-35cm', category: 'Kolam B', unit: 'ekor', minAlert: 5 },
+        { id: '103', name: 'Showa Sanshoku 35-40cm', category: 'Kolam B', unit: 'ekor', minAlert: 5 },
+        { id: '104', name: 'Pakan Koi High Growth 5kg', category: 'Pakan', unit: 'sak', minAlert: 3 },
+        { id: '105', name: 'Obat Karantina / Bakterisida 1L', category: 'Obat & Vitamin', unit: 'botol', minAlert: 2 }
     ];
 
     let products = JSON.parse(localStorage.getItem('dragonkoi_products')) || defaultProducts;
@@ -412,25 +432,36 @@
 
         products.forEach(prod => {
             const isChecked = weekRecords[prod.id] !== undefined && weekRecords[prod.id] !== null && weekRecords[prod.id] !== '';
-            const qty = isChecked ? weekRecords[prod.id] : '';
+            const qty = isChecked ? Number(weekRecords[prod.id]) : '';
+            
+            // 判斷是否低於警戒值
+            const hasMinAlert = prod.minAlert !== undefined && prod.minAlert !== null && prod.minAlert !== '';
+            const isLowStock = isChecked && hasMinAlert && qty <= Number(prod.minAlert);
 
             if (isChecked) checkedCount++;
 
             if (filter === 'checked' && !isChecked) return;
             if (filter === 'unchecked' && isChecked) return;
+            if (filter === 'low_stock' && !isLowStock) return;
             if (search && !prod.name.toLowerCase().includes(search) && !(prod.category && prod.category.toLowerCase().includes(search))) return;
 
             visibleCount++;
 
             const card = document.createElement('div');
-            card.className = `product-card ${isChecked ? 'checked' : 'unchecked'}`;
+            card.className = `product-card ${isChecked ? 'checked' : 'unchecked'} ${isLowStock ? 'low-stock' : ''}`;
             card.innerHTML = `
                 <div class="product-info">
                     <div class="product-name">${prod.name}</div>
-                    <div class="product-meta"><span>${prod.category || 'Tanpa Kategori'}</span></div>
-                    <span class="badge ${isChecked ? 'badge-checked' : 'badge-unchecked'}">
-                        ${isChecked ? '✓ Sudah Diperiksa' : 'Belum Diperiksa'}
-                    </span>
+                    <div class="product-meta">
+                        <span>${prod.category || 'Tanpa Kategori'}</span>
+                        ${hasMinAlert ? ` | <small style="color:#888;">Min: ${prod.minAlert} ${prod.unit}</small>` : ''}
+                    </div>
+                    <div class="badge-group">
+                        <span class="badge ${isChecked ? 'badge-checked' : 'badge-unchecked'}">
+                            ${isChecked ? '✓ Sudah Diperiksa' : 'Belum Diperiksa'}
+                        </span>
+                        ${isLowStock ? `<span class="badge badge-alert">⚠️ Stok Menipis</span>` : ''}
+                    </div>
                 </div>
                 <div class="input-group">
                     <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" oninput="updateQty('${prod.id}', this.value)">
@@ -480,19 +511,23 @@
         document.getElementById('addModal').style.display = 'none';
         document.getElementById('newName').value = '';
         document.getElementById('newCategory').value = '';
+        document.getElementById('newMinAlert').value = '';
     }
 
     function saveNewProduct() {
         const name = document.getElementById('newName').value.trim();
         const category = document.getElementById('newCategory').value.trim();
         const unit = document.getElementById('newUnit').value.trim() || 'ekor';
+        const minAlertVal = document.getElementById('newMinAlert').value.trim();
 
         if (!name) {
             alert('Silakan masukkan nama produk');
             return;
         }
 
-        products.push({ id: Date.now().toString(), name, category, unit });
+        const minAlert = minAlertVal !== '' ? Number(minAlertVal) : null;
+
+        products.push({ id: Date.now().toString(), name, category, unit, minAlert });
         saveProducts();
         closeAddModal();
         renderList();
@@ -500,13 +535,14 @@
 
     function exportCSV() {
         const weekRecords = inventoryData[currentWeek] || {};
-        let csvContent = "\uFEFFNama Produk,Kategori,Jumlah Stok,Satuan,Status Stok\n";
+        let csvContent = "\uFEFFNama Produk,Kategori,Jumlah Stok,Satuan,Status Stok,Peringatan Stok\n";
 
         products.forEach(p => {
             const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
             const qty = isChecked ? weekRecords[p.id] : 0;
             const status = isChecked ? 'Sudah Diperiksa' : 'Belum Diperiksa';
-            csvContent += `"${p.name}","${p.category || ''}",${qty},"${p.unit}","${status}"\n`;
+            const isLow = isChecked && p.minAlert !== null && qty <= p.minAlert ? 'Stok Menipis' : 'Normal';
+            csvContent += `"${p.name}","${p.category || ''}",${qty},"${p.unit}","${status}","${isLow}"\n`;
         });
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
