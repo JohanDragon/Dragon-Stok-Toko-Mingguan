@@ -9,6 +9,9 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
+<!-- html2pdf.js 套件（用於將 HTML 轉為 PDF） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
 <style>
     :root {
         --primary: #1e3c72;
@@ -19,7 +22,6 @@
         --text-color: #333333;
         --border-color: #e0e0e0;
         
-        /* 狀態顏色微調 */
         --success: #2e7d32;       /* 已盤點：綠色 */
         --success-bg: #e8f5e9;
         
@@ -28,6 +30,9 @@
         
         --alert: #d32f2f;         /* 庫存不足：紅色 */
         --alert-bg: #ffebee;
+        
+        --whatsapp: #25D366;      /* WhatsApp 綠色 */
+        --whatsapp-dark: #128C7E;
     }
 
     body {
@@ -179,6 +184,8 @@
     .btn-primary:hover { background: var(--primary-dark); }
     .btn-secondary { background: #6c757d; color: white; }
     .btn-danger { background: #d32f2f; color: white; }
+    .btn-whatsapp { background: var(--whatsapp); color: white; }
+    .btn-whatsapp:hover { background: var(--whatsapp-dark); }
     .btn-sm { padding: 4px 8px; font-size: 12px; }
 
     /* Product List & Card Status Colors */
@@ -196,51 +203,18 @@
         position: relative;
     }
 
-    /* 已盤點：綠色邊線 */
-    .product-card.checked {
-        border-left-color: var(--success);
-    }
-
-    /* 未盤點：藍色邊線 */
-    .product-card.unchecked {
-        border-left-color: var(--info);
-    }
-
-    /* 庫存不足：紅色邊線與淺紅底色 */
+    .product-card.checked { border-left-color: var(--success); }
+    .product-card.unchecked { border-left-color: var(--info); }
     .product-card.low-stock {
         border-left-color: var(--alert) !important;
         background-color: #fff5f5;
     }
 
-    .product-info {
-        flex: 1;
-        padding-right: 10px;
-    }
-
-    .product-title-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .product-name {
-        font-size: 16px;
-        font-weight: bold;
-    }
-
-    .product-meta {
-        font-size: 13px;
-        color: #666;
-        margin-top: 2px;
-    }
-
-    .badge-group {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-top: 6px;
-    }
+    .product-info { flex: 1; padding-right: 10px; }
+    .product-title-row { display: flex; align-items: center; gap: 8px; }
+    .product-name { font-size: 16px; font-weight: bold; }
+    .product-meta { font-size: 13px; color: #666; margin-top: 2px; }
+    .badge-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
 
     .badge {
         display: inline-block;
@@ -254,12 +228,7 @@
     .badge-unchecked { background: var(--info-bg); color: var(--info); border: 1px solid #bae6fd; }
     .badge-alert { background: var(--alert-bg); color: var(--alert); border: 1px solid #ffcdd2; }
 
-    .input-group {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
+    .input-group { display: flex; align-items: center; gap: 6px; }
     .qty-input {
         width: 60px;
         padding: 8px;
@@ -269,11 +238,7 @@
         border-radius: 6px;
     }
 
-    .unit-text {
-        font-size: 13px;
-        color: #555;
-        min-width: 32px;
-    }
+    .unit-text { font-size: 13px; color: #555; min-width: 32px; }
 
     .btn-kosong {
         background: #ffebee;
@@ -288,11 +253,7 @@
         white-space: nowrap;
     }
 
-    .btn-kosong:hover {
-        background: #ef5350;
-        color: white;
-        border-color: #ef5350;
-    }
+    .btn-kosong:hover { background: #ef5350; color: white; border-color: #ef5350; }
 
     .btn-edit {
         background: #f1f5f9;
@@ -302,10 +263,6 @@
         border-radius: 4px;
         font-size: 11px;
         cursor: pointer;
-    }
-
-    .btn-edit:hover {
-        background: #e2e8f0;
     }
 
     /* Modal */
@@ -327,17 +284,8 @@
         max-width: 400px;
     }
 
-    .form-group {
-        margin-bottom: 12px;
-    }
-
-    .form-group label {
-        display: block;
-        font-size: 13px;
-        margin-bottom: 4px;
-        font-weight: bold;
-    }
-
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; margin-bottom: 4px; font-weight: bold; }
     .form-group input {
         width: 100%;
         padding: 8px;
@@ -349,23 +297,45 @@
     .export-card {
         background: #eef2f5;
         border: 1px dashed var(--primary);
-        padding: 12px;
+        padding: 16px;
         border-radius: 8px;
         margin-top: 20px;
         text-align: center;
     }
 
+    .export-btn-group {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 10px;
+    }
+
     /* Role Visibility Control */
-    .admin-only {
-        display: none !important;
-    }
+    .admin-only { display: none !important; }
+    body.admin-mode .admin-only { display: inline-flex !important; }
 
-    body.admin-mode .admin-only {
-        display: inline-flex !important;
+    /* PDF 隱藏範本 (渲染用) */
+    #pdfTemplate {
+        display: none;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+        background: #fff;
     }
-
-    body.admin-mode .admin-only-block {
-        display: block !important;
+    #pdfTemplate table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+    }
+    #pdfTemplate th, #pdfTemplate td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+        font-size: 12px;
+    }
+    #pdfTemplate th {
+        background-color: #1e3c72;
+        color: white;
     }
 </style>
 </head>
@@ -412,9 +382,13 @@
 
     <!-- Export Section -->
     <div class="export-card">
-        <p style="margin:0 0 8px 0; font-size:14px; color:#444;">Ekspor / Cadangan Hasil Stok Opnam</p>
-        <button class="btn btn-secondary" onclick="exportCSV()">📥 Download Laporan CSV</button>
-        <button class="btn btn-danger admin-only" style="margin-left:8px;" onclick="resetCurrentWeek()">↺ Reset Minggu Ini</button>
+        <p style="margin:0; font-size:14px; font-weight:bold; color:#333;">Ekspor / Kirim Laporan Stok Opnam</p>
+        <div class="export-btn-group">
+            <button class="btn btn-secondary" onclick="exportCSV()">📥 CSV</button>
+            <button class="btn btn-primary" onclick="exportPDF()">📄 Download PDF</button>
+            <button class="btn btn-whatsapp" onclick="sendToWhatsApp()">💬 Kirim via WhatsApp</button>
+            <button class="btn btn-danger admin-only" onclick="resetCurrentWeek()">↺ Reset Minggu Ini</button>
+        </div>
     </div>
 </div>
 
@@ -447,6 +421,25 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- PDF 生成用的隱藏 HTML 範本 -->
+<div id="pdfTemplate">
+    <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
+    <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
+    <table>
+        <thead>
+            <tr>
+                <th>No</th>
+                <th>Nama Produk</th>
+                <th>Kategori</th>
+                <th>Jumlah Stok</th>
+                <th>Status</th>
+                <th>Catatan</th>
+            </tr>
+        </thead>
+        <tbody id="pdfTableBody"></tbody>
+    </table>
 </div>
 
 <script>
@@ -534,7 +527,6 @@
     }
 
     function setupFirebaseListeners() {
-        // 連線狀態監聽
         db.ref('.info/connected').on('value', (snap) => {
             if (snap.val() === true) {
                 updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
@@ -543,24 +535,17 @@
             }
         });
 
-        // 監聽商品資料
         db.ref('products').on('value', (snapshot) => {
             const val = snapshot.val();
             if (val) {
-                if (Array.isArray(val)) {
-                    products = val.filter(item => item !== null);
-                } else {
-                    products = Object.values(val);
-                }
+                products = Array.isArray(val) ? val.filter(item => item !== null) : Object.values(val);
             } else {
-                // 資料庫為空時初始預設資料
                 products = defaultProducts;
                 db.ref('products').set(products);
             }
             renderList();
         });
 
-        // 監聽盤點紀錄
         db.ref('inventory').on('value', (snapshot) => {
             inventoryData = snapshot.val() || {};
             renderList();
@@ -620,7 +605,6 @@
             visibleCount++;
 
             const card = document.createElement('div');
-            // 未盤點: unchecked (藍色), 已盤點: checked (綠色), 庫存不足: low-stock (紅色)
             card.className = `product-card ${isChecked ? 'checked' : 'unchecked'} ${isLowStock ? 'low-stock' : ''}`;
             card.innerHTML = `
                 <div class="product-info">
@@ -779,6 +763,98 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+
+    // --- 新增：產生 PDF 檔案 ---
+    function generatePDFBlob() {
+        const weekRecords = inventoryData[currentWeek] || {};
+        const pdfMeta = document.getElementById('pdfMeta');
+        const pdfTbody = document.getElementById('pdfTableBody');
+        
+        pdfMeta.textContent = `Periode: ${currentWeek} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
+        pdfTbody.innerHTML = '';
+
+        products.forEach((p, index) => {
+            const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
+            const qty = isChecked ? weekRecords[p.id] : '-';
+            const status = isChecked ? '✓ Checked' : 'Unchecked';
+            const isLow = isChecked && p.minAlert !== null && Number(qty) <= p.minAlert;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td><strong>${p.name}</strong></td>
+                <td>${p.category || '-'}</td>
+                <td><strong>${qty}</strong> ${p.unit}</td>
+                <td>${status}</td>
+                <td style="color:${isLow ? 'red' : 'black'};">${isLow ? '⚠️ Stok Menipis' : 'Normal'}</td>
+            `;
+            pdfTbody.appendChild(tr);
+        });
+
+        const element = document.getElementById('pdfTemplate');
+        element.style.display = 'block'; // 暫時顯示以供抓取
+
+        const opt = {
+            margin:       10,
+            filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        return html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdfObj) => {
+            element.style.display = 'none'; // 抓取完畢隱藏
+            return pdfObj;
+        });
+    }
+
+    function exportPDF() {
+        generatePDFBlob().then((pdfObj) => {
+            pdfObj.save(`Laporan_Stok_DragonKoi_${currentWeek}.pdf`);
+        });
+    }
+
+    // --- 新增：輸出 PDF 並且跳轉 WhatsApp 傳送 ---
+    function sendToWhatsApp() {
+        const weekRecords = inventoryData[currentWeek] || {};
+        let checkedCount = 0;
+        let lowStockList = [];
+
+        products.forEach(p => {
+            const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
+            if (isChecked) {
+                checkedCount++;
+                const qty = Number(weekRecords[p.id]);
+                if (p.minAlert !== null && qty <= p.minAlert) {
+                    lowStockList.push(`- ${p.name}: ${qty} ${p.unit} (Min: ${p.minAlert})`);
+                }
+            }
+        });
+
+        // 1. 建立 WhatsApp 文字訊息內容
+        let msg = `*🐉 LAPORAN STOK DRAGON KOI (${currentWeek})*\n`;
+        msg += `------------------------------------\n`;
+        msg += `📊 Progres Opnam: ${checkedCount}/${products.length} Item Selesai\n\n`;
+
+        if (lowStockList.length > 0) {
+            msg += `*⚠️ STOK MENIPIS / ALERTA:*\n`;
+            msg += lowStockList.join('\n') + `\n\n`;
+        } else {
+            msg += `✅ Semua stok aman / terisi dengan baik.\n\n`;
+        }
+
+        msg += `📄 *Dokumen PDF Laporan Stok telah di-download ke HP/Komputer Anda.* Mohon lampirkan (attach) file PDF tersebut pada chat ini. Terima kasih!`;
+
+        // 2. 先觸發 PDF 下載
+        exportPDF();
+
+        // 3. 自動複製文字訊息到剪貼簿，並開啟 WhatsApp
+        const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+        
+        setTimeout(() => {
+            window.open(waUrl, '_blank');
+        }, 1000); // 稍微延遲 1 秒，等待 PDF 瀏覽器下載彈出
     }
 
     init();
