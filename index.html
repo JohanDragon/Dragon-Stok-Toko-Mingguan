@@ -18,12 +18,16 @@
         --card-bg: #ffffff;
         --text-color: #333333;
         --border-color: #e0e0e0;
-        --success: #2e7d32;
+        
+        /* 狀態顏色微調 */
+        --success: #2e7d32;       /* 已盤點：綠色 */
         --success-bg: #e8f5e9;
-        --warning: #c62828;
-        --warning-bg: #ffebee;
-        --alert: #e65100;
-        --alert-bg: #fff3e0;
+        
+        --info: #0284c7;          /* 未盤點：藍色 */
+        --info-bg: #e0f2fe;
+        
+        --alert: #d32f2f;         /* 庫存不足：紅色 */
+        --alert-bg: #ffebee;
     }
 
     body {
@@ -177,7 +181,7 @@
     .btn-danger { background: #d32f2f; color: white; }
     .btn-sm { padding: 4px 8px; font-size: 12px; }
 
-    /* Product List */
+    /* Product List & Card Status Colors */
     .product-card {
         background: var(--card-bg);
         border-radius: 10px;
@@ -188,21 +192,24 @@
         align-items: center;
         justify-content: space-between;
         border-left: 6px solid #ccc;
-        transition: transform 0.1s, border-color 0.2s;
+        transition: transform 0.1s, border-color 0.2s, background-color 0.2s;
         position: relative;
     }
 
+    /* 已盤點：綠色邊線 */
     .product-card.checked {
         border-left-color: var(--success);
     }
 
+    /* 未盤點：藍色邊線 */
     .product-card.unchecked {
-        border-left-color: var(--warning);
+        border-left-color: var(--info);
     }
 
+    /* 庫存不足：紅色邊線與淺紅底色 */
     .product-card.low-stock {
         border-left-color: var(--alert) !important;
-        background-color: #fffaf5;
+        background-color: #fff5f5;
     }
 
     .product-info {
@@ -244,8 +251,8 @@
     }
 
     .badge-checked { background: var(--success-bg); color: var(--success); }
-    .badge-unchecked { background: var(--warning-bg); color: var(--warning); }
-    .badge-alert { background: var(--alert-bg); color: var(--alert); border: 1px solid #ffe0b2; }
+    .badge-unchecked { background: var(--info-bg); color: var(--info); border: 1px solid #bae6fd; }
+    .badge-alert { background: var(--alert-bg); color: var(--alert); border: 1px solid #ffcdd2; }
 
     .input-group {
         display: flex;
@@ -613,6 +620,7 @@
             visibleCount++;
 
             const card = document.createElement('div');
+            // 未盤點: unchecked (藍色), 已盤點: checked (綠色), 庫存不足: low-stock (紅色)
             card.className = `product-card ${isChecked ? 'checked' : 'unchecked'} ${isLowStock ? 'low-stock' : ''}`;
             card.innerHTML = `
                 <div class="product-info">
