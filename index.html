@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>雜貨店每週庫存盤點系統</title>
+<title>Dragon Koi Stok Mingguan</title>
 <style>
     :root {
-        --primary: #2b5876;
-        --primary-dark: #1e3c72;
+        --primary: #1e3c72;
+        --primary-dark: #102a56;
         --accent: #00b4db;
         --bg-color: #f4f7f6;
         --card-bg: #ffffff;
@@ -45,10 +45,12 @@
 
     .header-card h1 {
         margin: 0 0 10px 0;
-        font-size: 22px;
+        font-size: 20px;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
     }
 
     .week-selector {
@@ -60,6 +62,10 @@
         font-size: 14px;
         font-weight: bold;
         cursor: pointer;
+    }
+
+    .week-selector option {
+        color: #333;
     }
 
     .progress-box {
@@ -113,7 +119,7 @@
     }
 
     .filter-select {
-        width: 130px;
+        width: 150px;
     }
 
     .btn {
@@ -255,12 +261,12 @@
     <!-- Header -->
     <div class="header-card">
         <h1>
-            <span>📦 週盤點系統</span>
+            <span>🐉 Dragon Koi Stok Mingguan</span>
             <select id="weekSelect" class="week-selector" onchange="changeWeek()"></select>
         </h1>
         <div class="progress-box">
             <div class="progress-text">
-                <span id="progressStats">盤點進度: 0 / 0</span>
+                <span id="progressStats">Progres Stok: 0 / 0</span>
                 <span id="progressPercent">0%</span>
             </div>
             <div class="progress-bar-bg">
@@ -271,13 +277,13 @@
 
     <!-- Controls -->
     <div class="controls-card">
-        <input type="text" id="searchInput" class="search-input" placeholder="搜尋商品名稱或分類..." oninput="renderList()">
+        <input type="text" id="searchInput" class="search-input" placeholder="Cari nama produk atau kategori..." oninput="renderList()">
         <select id="filterSelect" class="filter-select" onchange="renderList()">
-            <option value="all">全部商品</option>
-            <option value="unchecked">未盤點</option>
-            <option value="checked">已盤點</option>
+            <option value="all">Semua Produk</option>
+            <option value="unchecked">Belum Diperiksa</option>
+            <option value="checked">Sudah Diperiksa</option>
         </select>
-        <button class="btn btn-primary" onclick="openAddModal()">+ 新增商品</button>
+        <button class="btn btn-primary" onclick="openAddModal()">+ Tambah Produk</button>
     </div>
 
     <!-- Product List -->
@@ -285,46 +291,46 @@
 
     <!-- Export Section -->
     <div class="export-card">
-        <p style="margin:0 0 8px 0; font-size:14px; color:#444;">對盤結果匯出 / 備份</p>
-        <button class="btn btn-secondary" onclick="exportCSV()">📥 下載本週盤點 CSV 報表</button>
-        <button class="btn btn-danger" style="margin-left:8px;" onclick="resetCurrentWeek()">↺ 重置本週盤點</button>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#444;">Ekspor / Cadangan Hasil Stok Opnam</p>
+        <button class="btn btn-secondary" onclick="exportCSV()">📥 Download Laporan CSV</button>
+        <button class="btn btn-danger" style="margin-left:8px;" onclick="resetCurrentWeek()">↺ Reset Minggu Ini</button>
     </div>
 </div>
 
 <!-- Modal -->
 <div id="addModal" class="modal">
     <div class="modal-content">
-        <h3>新增品項</h3>
+        <h3>Tambah Item Baru</h3>
         <div class="form-group">
-            <label>商品名稱</label>
-            <input type="text" id="newName" placeholder="例如：台東池上米 5kg">
+            <label>Nama Produk</label>
+            <input type="text" id="newName" placeholder="Contoh: Kohaku 25-30cm">
         </div>
         <div class="form-group">
-            <label>分類 (可選)</label>
-            <input type="text" id="newCategory" placeholder="例如：糧油乾貨">
+            <label>Kategori (Opsional)</label>
+            <input type="text" id="newCategory" placeholder="Contoh: Kolam A / Pakan">
         </div>
         <div class="form-group">
-            <label>單位</label>
-            <input type="text" id="newUnit" placeholder="例如：包、罐、箱" value="包">
+            <label>Satuan</label>
+            <input type="text" id="newUnit" placeholder="Contoh: ekor, kg, sak" value="ekor">
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
-            <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
-            <button class="btn btn-primary" onclick="saveNewProduct()">確認新增</button>
+            <button class="btn btn-secondary" onclick="closeAddModal()">Batal</button>
+            <button class="btn btn-primary" onclick="saveNewProduct()">Simpan</button>
         </div>
     </div>
 </div>
 
 <script>
     const defaultProducts = [
-        { id: '101', name: '統一麵 蔥燒牛肉風味 (5包組)', category: '泡麵類', unit: '袋' },
-        { id: '102', name: '愛之味 鮪魚醬 185g', category: '罐頭類', unit: '罐' },
-        { id: '103', name: '萬家香 極品醬油 1500ml', category: '調味料', unit: '瓶' },
-        { id: '104', name: '舒潔 抽取式衛生紙 100抽x8包', category: '日用品', unit: '串' },
-        { id: '105', name: '泰山 純葵花油 2L', category: '糧油類', unit: '瓶' }
+        { id: '101', name: 'Kohaku 20-25cm', category: 'Kolam A', unit: 'ekor' },
+        { id: '102', name: 'Taisho Sanke 30-35cm', category: 'Kolam B', unit: 'ekor' },
+        { id: '103', name: 'Showa Sanshoku 35-40cm', category: 'Kolam B', unit: 'ekor' },
+        { id: '104', name: 'Pakan Koi High Growth 5kg', category: 'Pakan', unit: 'sak' },
+        { id: '105', name: 'Obat Karantina / Bakterisida 1L', category: 'Obat & Vitamin', unit: 'botol' }
     ];
 
-    let products = JSON.parse(localStorage.getItem('grocery_products')) || defaultProducts;
-    let inventoryData = JSON.parse(localStorage.getItem('grocery_inventory_records')) || {};
+    let products = JSON.parse(localStorage.getItem('dragonkoi_products')) || defaultProducts;
+    let inventoryData = JSON.parse(localStorage.getItem('dragonkoi_inventory_records')) || {};
 
     function getWeekIdentifier(d = new Date()) {
         const date = new Date(d.getTime());
@@ -344,11 +350,11 @@
     }
 
     function saveProducts() {
-        localStorage.setItem('grocery_products', JSON.stringify(products));
+        localStorage.setItem('dragonkoi_products', JSON.stringify(products));
     }
 
     function saveInventory() {
-        localStorage.setItem('grocery_inventory_records', JSON.stringify(inventoryData));
+        localStorage.setItem('dragonkoi_inventory_records', JSON.stringify(inventoryData));
     }
 
     function setupWeekOptions() {
@@ -361,7 +367,7 @@
             const weekId = getWeekIdentifier(targetDate);
             const option = document.createElement('option');
             option.value = weekId;
-            option.textContent = i === 0 ? `${weekId} (本週)` : weekId;
+            option.textContent = i === 0 ? `${weekId} (Minggu Ini)` : weekId;
             select.appendChild(option);
         }
         select.value = currentWeek;
@@ -401,9 +407,9 @@
             card.innerHTML = `
                 <div class="product-info">
                     <div class="product-name">${prod.name}</div>
-                    <div class="product-meta"><span>${prod.category || '未分類'}</span></div>
+                    <div class="product-meta"><span>${prod.category || 'Tanpa Kategori'}</span></div>
                     <span class="badge ${isChecked ? 'badge-checked' : 'badge-unchecked'}">
-                        ${isChecked ? '✓ 已盤點' : '未盤點'}
+                        ${isChecked ? '✓ Sudah Diperiksa' : 'Belum Diperiksa'}
                     </span>
                 </div>
                 <div class="input-group">
@@ -415,12 +421,12 @@
         });
 
         if (visibleCount === 0) {
-            listContainer.innerHTML = '<div style="text-align:center; color:#999; padding:30px;">沒有符合條件的商品</div>';
+            listContainer.innerHTML = '<div style="text-align:center; color:#999; padding:30px;">Tidak ada produk yang cocok</div>';
         }
 
         const total = products.length;
         const percent = total > 0 ? Math.round((checkedCount / total) * 100) : 0;
-        document.getElementById('progressStats').textContent = `盤點進度: ${checkedCount} / ${total} 品項`;
+        document.getElementById('progressStats').textContent = `Progres Stok: ${checkedCount} / ${total} Item`;
         document.getElementById('progressPercent').textContent = `${percent}%`;
         document.getElementById('progressBar').style.width = `${percent}%`;
     }
@@ -437,7 +443,7 @@
     }
 
     function resetCurrentWeek() {
-        if (confirm(`確定要清除 [${currentWeek}] 的所有盤點紀錄嗎？`)) {
+        if (confirm(`Apakah Anda yakin ingin menghapus semua catatan stok untuk [${currentWeek}]?`)) {
             inventoryData[currentWeek] = {};
             saveInventory();
             renderList();
@@ -454,10 +460,10 @@
     function saveNewProduct() {
         const name = document.getElementById('newName').value.trim();
         const category = document.getElementById('newCategory').value.trim();
-        const unit = document.getElementById('newUnit').value.trim() || '件';
+        const unit = document.getElementById('newUnit').value.trim() || 'ekor';
 
         if (!name) {
-            alert('請輸入商品名稱');
+            alert('Silakan masukkan nama produk');
             return;
         }
 
@@ -469,12 +475,12 @@
 
     function exportCSV() {
         const weekRecords = inventoryData[currentWeek] || {};
-        let csvContent = "\uFEFF商品名稱,分類,盤點數量,單位,盤點狀態\n";
+        let csvContent = "\uFEFFNama Produk,Kategori,Jumlah Stok,Satuan,Status Stok\n";
 
         products.forEach(p => {
             const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
             const qty = isChecked ? weekRecords[p.id] : 0;
-            const status = isChecked ? '已盤點' : '未盤點';
+            const status = isChecked ? 'Sudah Diperiksa' : 'Belum Diperiksa';
             csvContent += `"${p.name}","${p.category || ''}",${qty},"${p.unit}","${status}"\n`;
         });
 
@@ -482,7 +488,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `週庫存盤點表_${currentWeek}.csv`);
+        link.setAttribute("download", `Laporan_Stok_DragonKoi_${currentWeek}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
