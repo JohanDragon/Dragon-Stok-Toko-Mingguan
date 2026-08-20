@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dragon Koi Stok Mingguan</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
 <style>
     :root {
         --primary: #1e3c72;
@@ -58,6 +63,14 @@
 
     .badge-admin-role { background: #0284c7; }
     .badge-staff-role { background: #64748b; }
+
+    .sync-status {
+        font-size: 12px;
+        color: #2563eb;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
 
     /* Header & Progress Bar */
     .header-card {
@@ -354,8 +367,8 @@
 <div class="container">
     <!-- Role Bar -->
     <div class="role-bar">
-        <span>👤 Status Akses:</span>
-        <span id="roleBadge" class="role-badge">Staff Mode</span>
+        <span>👤 Status Akses: <span id="roleBadge" class="role-badge">Staff Mode</span></span>
+        <span id="syncStatus" class="sync-status">🔄 Menghubungkan Firebase...</span>
     </div>
 
     <!-- Header -->
@@ -417,7 +430,7 @@
         </div>
         <div class="form-group">
             <label>Batas Stok Minimum (Peringatan / Alert)</label>
-            <input type="number" id="prodMinAlert" placeholder="Contoh: 5 (Kosongkan jika tidak perlu)" min="0">
+            <input type="number" id="prodMinAlert" placeholder="Contoh: 5 (Kosongkan jika tidak perlu)" min="0" inputmode="numeric" pattern="[0-9]*">
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
             <button id="btnDeleteProd" class="btn btn-danger btn-sm" style="display:none;" onclick="deleteProduct()">Hapus Produk</button>
@@ -430,6 +443,23 @@
 </div>
 
 <script>
+    const ADMIN_PIN = "7223577"; // 管理員 PIN 碼
+
+    // Firebase 配置項目
+    const firebaseConfig = {
+        apiKey: "AIzaSyDij5rAt5eMkJvDpL_EpcOo-pz2MzltH3I",
+        authDomain: "dragon-stok-toko-mingguan.firebaseapp.com",
+        databaseURL: "https://dragon-stok-toko-mingguan-default-rtdb.firebaseio.com",
+        projectId: "dragon-stok-toko-mingguan",
+        storageBucket: "dragon-stok-toko-mingguan.firebasestorage.app",
+        messagingSenderId: "1098092502341",
+        appId: "1:1098092502341:web:a0dcd6715ed23fb6f1b22c"
+    };
+
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     const defaultProducts = [
         { id: '101', name: 'Kohaku 20-25cm', category: 'Kolam A', unit: 'ekor', minAlert: 10 },
         { id: '102', name: 'Taisho Sanke 30-35cm', category: 'Kolam B', unit: 'ekor', minAlert: 5 },
@@ -439,13 +469,25 @@
     ];
 
     let isAdmin = false;
-    let products = JSON.parse(localStorage.getItem('dragonkoi_products')) || defaultProducts;
-    let inventoryData = JSON.parse(localStorage.getItem('dragonkoi_inventory_records')) || {};
+    let products = [];
+    let inventoryData = {};
 
     function checkRoleFromURL() {
         const urlParams = new URLSearchParams(window.location.search);
         const role = urlParams.get('role');
-        isAdmin = (role === 'admin');
+        
+        if (role === 'admin') {
+            const inputPin = prompt("Masukkan PIN Admin:");
+            if (inputPin === ADMIN_PIN) {
+                isAdmin = true;
+            } else {
+                alert("PIN Salah! Anda masuk sebagai Staff Mode.");
+                isAdmin = false;
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } else {
+            isAdmin = false;
+        }
 
         const roleBadge = document.getElementById('roleBadge');
         if (isAdmin) {
@@ -472,17 +514,54 @@
 
     function init() {
         checkRoleFromURL();
-        saveProducts();
         setupWeekOptions();
-        renderList();
+        setupFirebaseListeners();
     }
 
-    function saveProducts() {
-        localStorage.setItem('dragonkoi_products', JSON.stringify(products));
+    function updateSyncStatus(text, color = '#2563eb') {
+        const el = document.getElementById('syncStatus');
+        if (el) {
+            el.textContent = text;
+            el.style.color = color;
+        }
     }
 
-    function saveInventory() {
-        localStorage.setItem('dragonkoi_inventory_records', JSON.stringify(inventoryData));
+    function setupFirebaseListeners() {
+        // 連線狀態監聽
+        db.ref('.info/connected').on('value', (snap) => {
+            if (snap.val() === true) {
+                updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
+            } else {
+                updateSyncStatus('🔴 Terputus', '#dc2626');
+            }
+        });
+
+        // 監聽商品資料
+        db.ref('products').on('value', (snapshot) => {
+            const val = snapshot.val();
+            if (val) {
+                if (Array.isArray(val)) {
+                    products = val.filter(item => item !== null);
+                } else {
+                    products = Object.values(val);
+                }
+            } else {
+                // 資料庫為空時初始預設資料
+                products = defaultProducts;
+                db.ref('products').set(products);
+            }
+            renderList();
+        });
+
+        // 監聽盤點紀錄
+        db.ref('inventory').on('value', (snapshot) => {
+            inventoryData = snapshot.val() || {};
+            renderList();
+        });
+    }
+
+    function saveProductsToCloud() {
+        db.ref('products').set(products);
     }
 
     function setupWeekOptions() {
@@ -511,8 +590,7 @@
         const filter = document.getElementById('filterSelect').value;
         const search = document.getElementById('searchInput').value.trim().toLowerCase();
 
-        if (!inventoryData[currentWeek]) inventoryData[currentWeek] = {};
-        const weekRecords = inventoryData[currentWeek];
+        const weekRecords = inventoryData[currentWeek] || {};
 
         listContainer.innerHTML = '';
         let checkedCount = 0;
@@ -554,7 +632,7 @@
                     </div>
                 </div>
                 <div class="input-group">
-                    <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" 
+                    <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" inputmode="numeric" pattern="[0-9]*" 
                         onblur="commitQty('${prod.id}', this.value)" 
                         onkeydown="handleQtyKeyDown(event, '${prod.id}', this)">
                     <span class="unit-text">${prod.unit}</span>
@@ -576,20 +654,18 @@
     }
 
     function commitQty(productId, val) {
-        if (!inventoryData[currentWeek]) inventoryData[currentWeek] = {};
+        const itemRef = db.ref(`inventory/${currentWeek}/${productId}`);
         if (val === '') {
-            delete inventoryData[currentWeek][productId];
+            itemRef.remove();
         } else {
-            inventoryData[currentWeek][productId] = Number(val);
+            itemRef.set(Number(val));
         }
-        saveInventory();
-        renderList();
     }
 
     function handleQtyKeyDown(e, productId, inputElem) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            inputElem.blur(); // 按 Enter 時主動讓輸入框失焦，隱藏軟鍵盤並觸發 commitQty
+            inputElem.blur();
         }
     }
 
@@ -600,9 +676,7 @@
     function resetCurrentWeek() {
         if (!isAdmin) return;
         if (confirm(`Apakah Anda yakin ingin menghapus semua catatan stok untuk [${currentWeek}]?`)) {
-            inventoryData[currentWeek] = {};
-            saveInventory();
-            renderList();
+            db.ref(`inventory/${currentWeek}`).remove();
         }
     }
 
@@ -653,19 +727,16 @@
         const minAlert = minAlertVal !== '' ? Number(minAlertVal) : null;
 
         if (id) {
-            // Edit Mode
             const index = products.findIndex(p => p.id === id);
             if (index !== -1) {
                 products[index] = { ...products[index], name, category, unit, minAlert };
             }
         } else {
-            // Add Mode
             products.push({ id: Date.now().toString(), name, category, unit, minAlert });
         }
 
-        saveProducts();
+        saveProductsToCloud();
         closeModal();
-        renderList();
     }
 
     function deleteProduct() {
@@ -675,9 +746,8 @@
 
         if (confirm('Apakah Anda yakin ingin menghapus produk ini dari master data?')) {
             products = products.filter(p => p.id !== id);
-            saveProducts();
+            saveProductsToCloud();
             closeModal();
-            renderList();
         }
     }
 
