@@ -9,7 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-<!-- html2pdf.js 套件（用於將 HTML 轉為 PDF） -->
+<!-- html2pdf.js 套件 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
@@ -22,16 +22,16 @@
         --text-color: #333333;
         --border-color: #e0e0e0;
         
-        --success: #2e7d32;       /* 已盤點：綠色 */
+        --success: #2e7d32;
         --success-bg: #e8f5e9;
         
-        --info: #0284c7;          /* 未盤點：藍色 */
+        --info: #0284c7;
         --info-bg: #e0f2fe;
         
-        --alert: #d32f2f;         /* 庫存不足：紅色 */
+        --alert: #d32f2f;
         --alert-bg: #ffebee;
         
-        --whatsapp: #25D366;      /* WhatsApp 綠色 */
+        --whatsapp: #25D366;
         --whatsapp-dark: #128C7E;
     }
 
@@ -315,12 +315,15 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 隱藏範本 (渲染用) */
+    /* PDF 渲染專用樣式 (改用絕對定位移出螢幕外，避免 Safari 繪製空白) */
     #pdfTemplate {
-        display: none;
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        width: 750px;
+        background: #ffffff;
         padding: 20px;
         font-family: Arial, sans-serif;
-        background: #fff;
     }
     #pdfTemplate table {
         width: 100%;
@@ -423,14 +426,14 @@
     </div>
 </div>
 
-<!-- PDF 生成用的隱藏 HTML 範本 -->
+<!-- PDF 渲染 HTML 範本 -->
 <div id="pdfTemplate">
     <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
     <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
     <table>
         <thead>
             <tr>
-                <th>No</th>
+                <th style="width: 30px;">No</th>
                 <th>Nama Produk</th>
                 <th>Kategori</th>
                 <th>Jumlah Stok</th>
@@ -443,9 +446,8 @@
 </div>
 
 <script>
-    const ADMIN_PIN = "7223577"; // 管理員 PIN 碼
+    const ADMIN_PIN = "7223577";
 
-    // Firebase 配置項目
     const firebaseConfig = {
         apiKey: "AIzaSyDij5rAt5eMkJvDpL_EpcOo-pz2MzltH3I",
         authDomain: "dragon-stok-toko-mingguan.firebaseapp.com",
@@ -456,7 +458,6 @@
         appId: "1:1098092502341:web:a0dcd6715ed23fb6f1b22c"
     };
 
-    // 初始化 Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
@@ -765,11 +766,12 @@
         document.body.removeChild(link);
     }
 
-    // --- 新增：產生 PDF 檔案 ---
-    function generatePDFBlob() {
+    // 產生 PDF File 物件 (解決手機擷取空白問題)
+    function generatePDFFile() {
         const weekRecords = inventoryData[currentWeek] || {};
         const pdfMeta = document.getElementById('pdfMeta');
         const pdfTbody = document.getElementById('pdfTableBody');
+        const element = document.getElementById('pdfTemplate');
         
         pdfMeta.textContent = `Periode: ${currentWeek} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
         pdfTbody.innerHTML = '';
@@ -792,69 +794,91 @@
             pdfTbody.appendChild(tr);
         });
 
-        const element = document.getElementById('pdfTemplate');
-        element.style.display = 'block'; // 暫時顯示以供抓取
+        // 擷取時暫時拉入可可見座標區
+        element.style.position = 'relative';
+        element.style.left = '0';
 
         const opt = {
-            margin:       10,
+            margin:       8,
             filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2 },
+            html2canvas:  { scale: 2, scrollY: 0 },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        return html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdfObj) => {
-            element.style.display = 'none'; // 抓取完畢隱藏
-            return pdfObj;
+        return html2pdf().set(opt).from(element).output('blob').then((blob) => {
+            // 擷取完成後回覆隱藏
+            element.style.position = 'absolute';
+            element.style.left = '-9999px';
+            return new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
         });
     }
 
+    // 下載 PDF 按鈕
     function exportPDF() {
-        generatePDFBlob().then((pdfObj) => {
-            pdfObj.save(`Laporan_Stok_DragonKoi_${currentWeek}.pdf`);
+        updateSyncStatus('⏳ Memproses PDF...', '#eab308');
+        generatePDFFile().then((file) => {
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         });
     }
 
-    // --- 新增：輸出 PDF 並且跳轉 WhatsApp 傳送 ---
-    function sendToWhatsApp() {
-        const weekRecords = inventoryData[currentWeek] || {};
-        let checkedCount = 0;
-        let lowStockList = [];
-
-        products.forEach(p => {
-            const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
-            if (isChecked) {
-                checkedCount++;
-                const qty = Number(weekRecords[p.id]);
-                if (p.minAlert !== null && qty <= p.minAlert) {
-                    lowStockList.push(`- ${p.name}: ${qty} ${p.unit} (Min: ${p.minAlert})`);
-                }
-            }
-        });
-
-        // 1. 建立 WhatsApp 文字訊息內容
-        let msg = `*🐉 LAPORAN STOK DRAGON KOI (${currentWeek})*\n`;
-        msg += `------------------------------------\n`;
-        msg += `📊 Progres Opnam: ${checkedCount}/${products.length} Item Selesai\n\n`;
-
-        if (lowStockList.length > 0) {
-            msg += `*⚠️ STOK MENIPIS / ALERTA:*\n`;
-            msg += lowStockList.join('\n') + `\n\n`;
-        } else {
-            msg += `✅ Semua stok aman / terisi dengan baik.\n\n`;
-        }
-
-        msg += `📄 *Dokumen PDF Laporan Stok telah di-download ke HP/Komputer Anda.* Mohon lampirkan (attach) file PDF tersebut pada chat ini. Terima kasih!`;
-
-        // 2. 先觸發 PDF 下載
-        exportPDF();
-
-        // 3. 自動複製文字訊息到剪貼簿，並開啟 WhatsApp
-        const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    // 透過 WhatsApp 分享 (支援手機原生 PDF 夾檔)
+    async function sendToWhatsApp() {
+        updateSyncStatus('⏳ Memyiapkan Laporan...', '#eab308');
         
-        setTimeout(() => {
-            window.open(waUrl, '_blank');
-        }, 1000); // 稍微延遲 1 秒，等待 PDF 瀏覽器下載彈出
+        try {
+            const file = await generatePDFFile();
+            const weekRecords = inventoryData[currentWeek] || {};
+            let checkedCount = 0;
+            let lowStockList = [];
+
+            products.forEach(p => {
+                const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
+                if (isChecked) {
+                    checkedCount++;
+                    const qty = Number(weekRecords[p.id]);
+                    if (p.minAlert !== null && qty <= p.minAlert) {
+                        lowStockList.push(`- ${p.name}: ${qty} ${p.unit}`);
+                    }
+                }
+            });
+
+            let msg = `*🐉 LAPORAN STOK DRAGON KOI (${currentWeek})*\n`;
+            msg += `Progres: ${checkedCount}/${products.length} Item Selesai\n`;
+            if (lowStockList.length > 0) {
+                msg += `\n*⚠️ STOK MENIPIS:*\n` + lowStockList.join('\n');
+            }
+
+            // iOS / Android 原生分享面板
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Laporan Stok ${currentWeek}`,
+                    text: msg,
+                    files: [file]
+                });
+            } else {
+                // 電腦版降級機制
+                const url = URL.createObjectURL(file);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name;
+                a.click();
+                
+                const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+                window.open(waUrl, '_blank');
+            }
+        } catch (err) {
+            console.error("Share failed:", err);
+        } finally {
+            updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
+        }
     }
 
     init();
