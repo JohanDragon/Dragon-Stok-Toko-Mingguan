@@ -554,7 +554,9 @@
                     </div>
                 </div>
                 <div class="input-group">
-                    <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" oninput="updateQty('${prod.id}', this.value)">
+                    <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" 
+                        onblur="commitQty('${prod.id}', this.value)" 
+                        onkeydown="handleQtyKeyDown(event, '${prod.id}', this)">
                     <span class="unit-text">${prod.unit}</span>
                     <button class="btn-kosong" onclick="setKosong('${prod.id}')">Kosong</button>
                 </div>
@@ -573,7 +575,7 @@
         document.getElementById('progressBar').style.width = `${percent}%`;
     }
 
-    function updateQty(productId, val) {
+    function commitQty(productId, val) {
         if (!inventoryData[currentWeek]) inventoryData[currentWeek] = {};
         if (val === '') {
             delete inventoryData[currentWeek][productId];
@@ -584,8 +586,15 @@
         renderList();
     }
 
+    function handleQtyKeyDown(e, productId, inputElem) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            inputElem.blur(); // 按 Enter 時主動讓輸入框失焦，隱藏軟鍵盤並觸發 commitQty
+        }
+    }
+
     function setKosong(productId) {
-        updateQty(productId, 0);
+        commitQty(productId, 0);
     }
 
     function resetCurrentWeek() {
