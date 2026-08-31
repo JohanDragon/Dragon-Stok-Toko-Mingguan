@@ -315,7 +315,7 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 渲染專用樣式 */
+    /* PDF 渲染專用樣式 (確保跨頁標頭與分頁無縫相容) */
     #pdfTemplate {
         position: absolute;
         left: -9999px;
@@ -340,12 +340,13 @@
         background-color: #1e3c72;
         color: white;
     }
-    /* PDF 跨頁與標頭重複優化 */
+    
+    /* 強制 PDF 跨頁時重複顯示表格標頭 (<thead>) */
     #pdfTemplate thead {
-        display: table-header-group;
+        display: table-header-group !important;
     }
     #pdfTemplate tr {
-        page-break-inside: avoid;
+        page-break-inside: avoid !important;
     }
 </style>
 </head>
@@ -433,7 +434,7 @@
     </div>
 </div>
 
-<!-- PDF 渲染 HTML 範本 (已隱藏 Kategori 欄位) -->
+<!-- PDF 渲染 HTML 範本 (已移除 Kategori 欄位) -->
 <div id="pdfTemplate">
     <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
     <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
@@ -586,7 +587,7 @@
         renderList();
     }
 
-    /* Event Delegation 與 Debounce 綁定 */
+    /* Event Delegation 與 Debounce 機制 */
     function setupEventDelegation() {
         const listContainer = document.getElementById('productList');
 
@@ -699,7 +700,6 @@
         commitQty(productId, 0);
     }
 
-    /* 專一節點刪除防範 Race Condition */
     function resetCurrentWeek() {
         if (!isAdmin) return;
         if (confirm(`Apakah Anda yakin ingin menghapus semua catatan stok untuk [${currentWeek}]?`)) {
@@ -800,7 +800,7 @@
         document.body.removeChild(link);
     }
 
-    /* 產生 PDF 檔案，含跨頁頁碼輸出 */
+    /* 產生 PDF 檔案：包含頁碼與重複跨頁 <thead> 標頭 */
     function generatePDFFile() {
         const weekRecords = inventoryData[currentWeek] || {};
         const pdfMeta = document.getElementById('pdfMeta');
@@ -831,11 +831,12 @@
         element.style.left = '0';
 
         const opt = {
-            margin:       [10, 8, 15, 8],
+            margin:       [12, 8, 15, 8],
             filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { scale: 2, scrollY: 0 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
         return html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf) => {
