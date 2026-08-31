@@ -843,17 +843,37 @@
         });
     }
 
-    // 下載 PDF 按鈕
+    // 在新分頁開啟預覽 PDF (若被彈跳視窗阻擋則自動改為背景下載)
     function exportPDF() {
         updateSyncStatus('⏳ Memproses PDF...', '#eab308');
+        
+        // 1. 點擊瞬間先開啟空白新分頁，避開瀏覽器阻擋機制
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+            newWindow.document.write('<div style="font-family:sans-serif; text-align:center; padding:50px;">⏳ Memuat PDF... Mohon tunggu.</div>');
+        }
+
         generatePDFFile().then((file) => {
-            const url = URL.createObjectURL(file);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const fileURL = URL.createObjectURL(file);
+            
+            if (newWindow) {
+                // 2. 將 PDF 網址寫入新分頁進行預覽
+                newWindow.location.href = fileURL;
+            } else {
+                // 若彈跳視窗被系統關閉，備援為直接下載機制
+                const a = document.createElement('a');
+                a.href = fileURL;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+            
+            updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
+        }).catch(err => {
+            console.error(err);
+            if (newWindow) newWindow.close();
+            alert('Gagal membuat PDF!');
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         });
     }
