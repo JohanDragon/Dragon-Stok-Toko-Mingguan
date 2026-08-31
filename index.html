@@ -315,27 +315,21 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 範本專用隱藏與渲染樣式 */
+    /* PDF 專用渲染區域：確保 HTML2Canvas 抓得到 DOM，但視覺上完全移出螢幕 */
     #pdfTemplate {
-        display: none; /* 平時徹底隱藏，不影響頁面版面 */
-        position: absolute;
-        left: -9999px;
-        top: 0;
-        width: 750px;
-        background: #ffffff;
-        padding: 20px;
-        font-family: Arial, sans-serif;
+        position: absolute !important;
+        left: -9999px !important;
+        top: 0 !important;
+        width: 750px !important;
+        background: #ffffff !important;
+        padding: 20px !important;
+        font-family: Arial, sans-serif !important;
+        box-sizing: border-box !important;
     }
     #pdfTemplate table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 12px;
-    }
-    #pdfTemplate thead {
-        display: table-header-group;
-    }
-    #pdfTemplate tr {
-        page-break-inside: avoid;
     }
     #pdfTemplate th, #pdfTemplate td {
         border: 1px solid #ddd;
@@ -433,7 +427,7 @@
     </div>
 </div>
 
-<!-- PDF 渲染 HTML 範本 (完全隱藏) -->
+<!-- PDF 渲染 HTML 範本 (移至視窗外，維持可被渲染狀態) -->
 <div id="pdfTemplate">
     <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
     <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
@@ -784,8 +778,8 @@
         document.body.removeChild(link);
     }
 
-    // 產生 PDF File 物件 (生成當下才短暫顯示，完畢後必定隱藏)
-    async function generatePDFFile() {
+    // 生成 PDF Blob 的核心函式
+    function generatePDFBlob() {
         const weekRecords = inventoryData[currentWeek] || {};
         const pdfMeta = document.getElementById('pdfMeta');
         const pdfTbody = document.getElementById('pdfTableBody');
@@ -811,20 +805,15 @@
             pdfTbody.appendChild(tr);
         });
 
-        // 僅在截圖時才將 display 切換為 block
-        element.style.display = 'block';
-
         const opt = {
             margin:       [10, 8, 12, 8],
             filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, scrollY: 0, useCORS: true },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+            html2canvas:  { scale: 2, scrollY: 0, useCORS: true, logging: false },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        try {
-            const jspdf = await html2pdf().set(opt).from(element).toPdf().get('jspdf');
+        return html2pdf().set(opt).from(element).toPdf().get('jspdf').then(jspdf => {
             const totalPages = jspdf.internal.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 jspdf.setPage(i);
@@ -832,46 +821,43 @@
                 jspdf.setTextColor(150);
                 jspdf.text(`Halaman ${i} dari ${totalPages}`, jspdf.internal.pageSize.getWidth() - 15, jspdf.internal.pageSize.getHeight() - 6, { align: 'right' });
             }
-            const blob = await jspdf.output('blob');
-            return new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
-        } finally {
-            // 無論成功或失敗，都強制藏回背景
-            element.style.display = 'none';
-        }
+            return jspdf.output('blob');
+        });
     }
 
-    // 直接觸發檔案下載功能
+    // 觸發下載 PDF
     async function exportPDF() {
         updateSyncStatus('⏳ Memproses PDF...', '#eab308');
         try {
-            const file = await generatePDFFile();
-            const url = URL.createObjectURL(file);
+            const blob = await generatePDFBlob();
+            const fileName = `Laporan_Stok_DragonKoi_${currentWeek}.pdf`;
+            const url = URL.createObjectURL(blob);
             
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = file.name;
+            a.download = fileName;
             document.body.appendChild(a);
             a.click();
             
             setTimeout(() => {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            }, 1000);
+            }, 2000);
 
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         } catch (err) {
             console.error(err);
-            alert('Gagal membuat PDF!');
+            alert('Gagal membuat PDF! Periksa jaringan atau coba browser lain.');
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         }
     }
 
+    // 發送至 WhatsApp
     async function sendToWhatsApp() {
         updateSyncStatus('⏳ Memyiapkan Laporan...', '#eab308');
         
         try {
-            const file = await generatePDFFile();
             const weekRecords = inventoryData[currentWeek] || {};
             let checkedCount = 0;
             let lowStockList = [];
@@ -893,24 +879,31 @@
                 msg += `\n*⚠️ STOK MENIPIS:*\n` + lowStockList.join('\n');
             }
 
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: `Laporan Stok ${currentWeek}`,
-                    text: msg,
-                    files: [file]
-                });
-            } else {
-                const url = URL.createObjectURL(file);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = file.name;
-                a.click();
+            // 判斷手機是否支援原生 Web Share (夾帶檔案)
+            if (navigator.share && navigator.canShare) {
+                const blob = await generatePDFBlob();
+                const file = new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
                 
-                const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-                window.open(waUrl, '_blank');
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        title: `Laporan Stok ${currentWeek}`,
+                        text: msg,
+                        files: [file]
+                    });
+                    updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
+                    return;
+                }
             }
+
+            // 若手機不支援 direct share PDF，自動開啟 WhatsApp 文字訊息並同時下載 PDF
+            exportPDF();
+            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+            window.open(waUrl, '_blank');
         } catch (err) {
             console.error("Share failed:", err);
+            // 發生例外時的備用轉跳
+            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent('🐉 Laporan Stok Dragon Koi')}`;
+            window.open(waUrl, '_blank');
         } finally {
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         }
