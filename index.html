@@ -315,21 +315,26 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 專用渲染區域：確保 HTML2Canvas 抓得到 DOM，但視覺上完全移出螢幕 */
+    /* PDF 渲染專用樣式 */
     #pdfTemplate {
-        position: absolute !important;
-        left: -9999px !important;
-        top: 0 !important;
-        width: 750px !important;
-        background: #ffffff !important;
-        padding: 20px !important;
-        font-family: Arial, sans-serif !important;
-        box-sizing: border-box !important;
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        width: 750px;
+        background: #ffffff;
+        padding: 20px;
+        font-family: Arial, sans-serif;
     }
     #pdfTemplate table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 12px;
+    }
+    #pdfTemplate thead {
+        display: table-header-group; /* 重複表格標頭 */
+    }
+    #pdfTemplate tr {
+        page-break-inside: avoid;
     }
     #pdfTemplate th, #pdfTemplate td {
         border: 1px solid #ddd;
@@ -381,7 +386,7 @@
         <button class="btn btn-primary admin-only" onclick="openAddModal()">+ Tambah Produk</button>
     </div>
 
-    <!-- Product List -->
+    <!-- Product List Container (Event Delegation) -->
     <div id="productList"></div>
 
     <!-- Export Section -->
@@ -427,7 +432,7 @@
     </div>
 </div>
 
-<!-- PDF 渲染 HTML 範本 (移至視窗外，維持可被渲染狀態) -->
+<!-- PDF 渲染 HTML 範本 -->
 <div id="pdfTemplate">
     <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
     <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
@@ -518,6 +523,7 @@
         checkRoleFromURL();
         setupWeekOptions();
         setupFirebaseListeners();
+        setupEventDelegation();
     }
 
     function updateSyncStatus(text, color = '#2563eb') {
@@ -579,8 +585,75 @@
         renderList();
     }
 
+    /* 2. DOM 效能優化 (Event Delegation + Debounce) */
+    function setupEventDelegation() {
+        const listContainer = document.getElementById('productList');
+
+        // 事件代理：監聽輸入事件 (oninput) 並進行 Debounce
+        listContainer.addEventListener('input', (e) => {
+            if (e.target.classList.contains('qty-input')) {
+                const productId = e.target.getAttribute('data-id');
+                const val = e.target.value;
+
+                if (debounceTimers[productId]) {
+                    clearTimeout(debounceTimers[productId]);
+                }
+
+                debounceTimers[productId] = setTimeout(() => {
+                    commitQty(productId, val);
+                    delete debounceTimers[productId];
+                }, 300);
+            }
+        });
+
+        // 事件代理：監聽焦點離開事件 (onblur)
+        listContainer.addEventListener('focusout', (e) => {
+            if (e.target.classList.contains('qty-input')) {
+                const productId = e.target.getAttribute('data-id');
+                const val = e.target.value;
+                if (debounceTimers[productId]) {
+                    clearTimeout(debounceTimers[productId]);
+                    delete debounceTimers[productId];
+                }
+                commitQty(productId, val);
+            }
+        });
+
+        // 事件代理：監聽按鍵事件 (onkeydown)
+        listContainer.addEventListener('keydown', (e) => {
+            if (e.target.classList.contains('qty-input') && e.key === 'Enter') {
+                e.preventDefault();
+                e.target.blur();
+            }
+        });
+
+        // 事件代理：監聽按鈕點擊事件 (Edit & Kosong)
+        listContainer.addEventListener('click', (e) => {
+            const editBtn = e.target.closest('.btn-edit');
+            if (editBtn) {
+                const productId = editBtn.getAttribute('data-id');
+                openEditModal(productId);
+                return;
+            }
+
+            const kosongBtn = e.target.closest('.btn-kosong');
+            if (kosongBtn) {
+                const productId = kosongBtn.getAttribute('data-id');
+                setKosong(productId);
+                return;
+            }
+        });
+    }
+
     function renderList() {
         const listContainer = document.getElementById('productList');
+        
+        // 保留當前正在輸入的 input 焦點狀態
+        const activeElement = document.activeElement;
+        const activeProductId = activeElement && activeElement.classList.contains('qty-input') 
+            ? activeElement.getAttribute('data-id') 
+            : null;
+
         const filter = document.getElementById('filterSelect').value;
         const search = document.getElementById('searchInput').value.trim().toLowerCase();
 
@@ -612,7 +685,7 @@
                 <div class="product-info">
                     <div class="product-title-row">
                         <span class="product-name">${prod.name}</span>
-                        <button class="btn-edit admin-only" onclick="openEditModal('${prod.id}')">✏️ Edit</button>
+                        <button class="btn-edit admin-only" data-id="${prod.id}">✏️ Edit</button>
                     </div>
                     <div class="product-meta">
                         <span>${prod.category || 'Tanpa Kategori'}</span>
@@ -626,15 +699,23 @@
                     </div>
                 </div>
                 <div class="input-group">
-                    <input type="number" class="qty-input" placeholder="0" min="0" value="${qty}" inputmode="numeric" pattern="[0-9]*" 
-                        oninput="debouncedCommitQty('${prod.id}', this.value)" 
-                        onkeydown="handleQtyKeyDown(event, '${prod.id}', this)">
+                    <input type="number" class="qty-input" data-id="${prod.id}" placeholder="0" min="0" value="${qty}" inputmode="numeric" pattern="[0-9]*">
                     <span class="unit-text">${prod.unit}</span>
-                    <button class="btn-kosong" onclick="setKosong('${prod.id}')">Kosong</button>
+                    <button class="btn-kosong" data-id="${prod.id}">Kosong</button>
                 </div>
             `;
             listContainer.appendChild(card);
         });
+
+        // 恢復焦點
+        if (activeProductId) {
+            const inputToFocus = listContainer.querySelector(`.qty-input[data-id="${activeProductId}"]`);
+            if (inputToFocus) {
+                inputToFocus.focus();
+                const valLen = inputToFocus.value.length;
+                inputToFocus.setSelectionRange(valLen, valLen);
+            }
+        }
 
         if (visibleCount === 0) {
             listContainer.innerHTML = '<div style="text-align:center; color:#999; padding:30px;">Tidak ada produk yang cocok</div>';
@@ -647,30 +728,16 @@
         document.getElementById('progressBar').style.width = `${percent}%`;
     }
 
-    function debouncedCommitQty(productId, val) {
-        if (debounceTimers[productId]) {
-            clearTimeout(debounceTimers[productId]);
-        }
-        debounceTimers[productId] = setTimeout(() => {
-            commitQty(productId, val);
-            delete debounceTimers[productId];
-        }, 400);
-    }
-
+    /* 1. 多人同時輸入的覆蓋風險優化 (Race Condition) */
     function commitQty(productId, val) {
-        if (val === '') {
+        if (val === '' || val === null || val === undefined) {
+            // 專一路徑刪除
             db.ref(`inventory/${currentWeek}/${productId}`).remove();
         } else {
+            // 局部更新 (update)
             db.ref(`inventory/${currentWeek}`).update({
                 [productId]: Number(val)
             });
-        }
-    }
-
-    function handleQtyKeyDown(e, productId, inputElem) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            inputElem.blur();
         }
     }
 
@@ -681,6 +748,7 @@
     function resetCurrentWeek() {
         if (!isAdmin) return;
         if (confirm(`Apakah Anda yakin ingin menghapus semua catatan stok untuk [${currentWeek}]?`)) {
+            // 專一路徑刪除整個當周節點
             db.ref(`inventory/${currentWeek}`).remove();
         }
     }
@@ -778,8 +846,8 @@
         document.body.removeChild(link);
     }
 
-    // 生成 PDF Blob 的核心函式
-    function generatePDFBlob() {
+    /* 3. PDF 樣式與列印優化 (頁碼、頁尾、表格標頭重複) */
+    function generatePDFFile() {
         const weekRecords = inventoryData[currentWeek] || {};
         const pdfMeta = document.getElementById('pdfMeta');
         const pdfTbody = document.getElementById('pdfTableBody');
@@ -805,59 +873,58 @@
             pdfTbody.appendChild(tr);
         });
 
+        // 擷取時暫時拉入可見座標區
+        element.style.position = 'relative';
+        element.style.left = '0';
+
         const opt = {
-            margin:       [10, 8, 12, 8],
+            margin:       [10, 10, 15, 10], // 上、右、下、左 (保留頁尾頁碼空間)
             filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, scrollY: 0, useCORS: true, logging: false },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            html2canvas:  { scale: 2, scrollY: 0 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
-        return html2pdf().set(opt).from(element).toPdf().get('jspdf').then(jspdf => {
-            const totalPages = jspdf.internal.getNumberOfPages();
+        return html2pdf().set(opt).from(element).toPdf().get('jspdf').then((pdf) => {
+            // 計算總頁數並加入頁尾與頁碼 (Page X of Y)
+            const totalPages = pdf.internal.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
-                jspdf.setPage(i);
-                jspdf.setFontSize(9);
-                jspdf.setTextColor(150);
-                jspdf.text(`Halaman ${i} dari ${totalPages}`, jspdf.internal.pageSize.getWidth() - 15, jspdf.internal.pageSize.getHeight() - 6, { align: 'right' });
+                pdf.setPage(i);
+                pdf.setFontSize(9);
+                pdf.setTextColor(128, 128, 128);
+                // 頁尾頁碼置中
+                pdf.text(`Page ${i} of ${totalPages}`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
             }
-            return jspdf.output('blob');
+        }).output('blob').then((blob) => {
+            // 擷取完成後回復隱藏
+            element.style.position = 'absolute';
+            element.style.left = '-9999px';
+            return new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
         });
     }
 
-    // 觸發下載 PDF
-    async function exportPDF() {
+    // 下載 PDF 按鈕
+    function exportPDF() {
         updateSyncStatus('⏳ Memproses PDF...', '#eab308');
-        try {
-            const blob = await generatePDFBlob();
-            const fileName = `Laporan_Stok_DragonKoi_${currentWeek}.pdf`;
-            const url = URL.createObjectURL(blob);
-            
+        generatePDFFile().then((file) => {
+            const url = URL.createObjectURL(file);
             const a = document.createElement('a');
-            a.style.display = 'none';
             a.href = url;
-            a.download = fileName;
+            a.download = file.name;
             document.body.appendChild(a);
             a.click();
-            
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 2000);
-
+            document.body.removeChild(a);
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
-        } catch (err) {
-            console.error(err);
-            alert('Gagal membuat PDF! Periksa jaringan atau coba browser lain.');
-            updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
-        }
+        });
     }
 
-    // 發送至 WhatsApp
+    // 透過 WhatsApp 分享 (支援手機原生 PDF 夾檔)
     async function sendToWhatsApp() {
         updateSyncStatus('⏳ Memyiapkan Laporan...', '#eab308');
         
         try {
+            const file = await generatePDFFile();
             const weekRecords = inventoryData[currentWeek] || {};
             let checkedCount = 0;
             let lowStockList = [];
@@ -879,31 +946,26 @@
                 msg += `\n*⚠️ STOK MENIPIS:*\n` + lowStockList.join('\n');
             }
 
-            // 判斷手機是否支援原生 Web Share (夾帶檔案)
-            if (navigator.share && navigator.canShare) {
-                const blob = await generatePDFBlob();
-                const file = new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
+            // iOS / Android 原生分享面板
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Laporan Stok ${currentWeek}`,
+                    text: msg,
+                    files: [file]
+                });
+            } else {
+                // 電腦版降級機制
+                const url = URL.createObjectURL(file);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name;
+                a.click();
                 
-                if (navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        title: `Laporan Stok ${currentWeek}`,
-                        text: msg,
-                        files: [file]
-                    });
-                    updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
-                    return;
-                }
+                const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+                window.open(waUrl, '_blank');
             }
-
-            // 若手機不支援 direct share PDF，自動開啟 WhatsApp 文字訊息並同時下載 PDF
-            exportPDF();
-            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-            window.open(waUrl, '_blank');
         } catch (err) {
             console.error("Share failed:", err);
-            // 發生例外時的備用轉跳
-            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent('🐉 Laporan Stok Dragon Koi')}`;
-            window.open(waUrl, '_blank');
         } finally {
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
         }
