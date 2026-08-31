@@ -315,38 +315,57 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 渲染專用樣式 (確保跨頁標頭與分頁無縫相容) */
-    #pdfTemplate {
-        position: absolute;
-        left: -9999px;
-        top: 0;
-        width: 750px;
+    /* PDF 渲染容器結構 */
+    #pdfContainer {
+        display: none;
+    }
+
+    .pdf-page {
+        width: 700px;
         background: #ffffff;
         padding: 20px;
         font-family: Arial, sans-serif;
+        box-sizing: border-box;
     }
-    #pdfTemplate table {
+
+    .pdf-header {
+        margin-bottom: 12px;
+        border-bottom: 2px solid #1e3c72;
+        padding-bottom: 8px;
+    }
+
+    .pdf-title {
+        margin: 0;
+        color: #1e3c72;
+        font-size: 18px;
+    }
+
+    .pdf-meta {
+        margin: 4px 0 0 0;
+        font-size: 12px;
+        color: #555;
+    }
+
+    .pdf-table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 12px;
     }
-    #pdfTemplate th, #pdfTemplate td {
+
+    .pdf-table th, .pdf-table td {
         border: 1px solid #ddd;
-        padding: 8px;
+        padding: 6px 8px;
         text-align: left;
-        font-size: 12px;
+        font-size: 11px;
     }
-    #pdfTemplate th {
+
+    .pdf-table th {
         background-color: #1e3c72;
         color: white;
+        font-weight: bold;
     }
-    
-    /* 強制 PDF 跨頁時重複顯示表格標頭 (<thead>) */
-    #pdfTemplate thead {
-        display: table-header-group !important;
-    }
-    #pdfTemplate tr {
-        page-break-inside: avoid !important;
+
+    .pdf-table tr:nth-child(even) {
+        background-color: #f9f9f9;
     }
 </style>
 </head>
@@ -434,23 +453,8 @@
     </div>
 </div>
 
-<!-- PDF 渲染 HTML 範本 (已移除 Kategori 欄位) -->
-<div id="pdfTemplate">
-    <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
-    <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 30px;">No</th>
-                <th>Nama Produk</th>
-                <th>Jumlah Stok</th>
-                <th>Status</th>
-                <th>Catatan</th>
-            </tr>
-        </thead>
-        <tbody id="pdfTableBody"></tbody>
-    </table>
-</div>
+<!-- 動態生成的 PDF 多頁渲染容器 -->
+<div id="pdfContainer"></div>
 
 <script>
     const ADMIN_PIN = "7223577";
@@ -587,7 +591,6 @@
         renderList();
     }
 
-    /* Event Delegation 與 Debounce 機制 */
     function setupEventDelegation() {
         const listContainer = document.getElementById('productList');
 
@@ -685,7 +688,6 @@
         document.getElementById('progressBar').style.width = `${percent}%`;
     }
 
-    /* 局部更新防範 Race Condition */
     function commitQty(productId, val) {
         if (val === '') {
             db.ref(`inventory/${currentWeek}/${productId}`).remove();
@@ -800,56 +802,79 @@
         document.body.removeChild(link);
     }
 
-    /* 產生 PDF 檔案：包含頁碼與重複跨頁 <thead> 標頭 */
+    /* 精準分頁技術：手動分割 HTML 頁面，保證每頁頂部皆具備標題與完整 `<thead>` */
     function generatePDFFile() {
         const weekRecords = inventoryData[currentWeek] || {};
-        const pdfMeta = document.getElementById('pdfMeta');
-        const pdfTbody = document.getElementById('pdfTableBody');
-        const element = document.getElementById('pdfTemplate');
-        
-        pdfMeta.textContent = `Periode: ${currentWeek} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`;
-        pdfTbody.innerHTML = '';
+        const pdfContainer = document.getElementById('pdfContainer');
+        pdfContainer.innerHTML = '';
+        pdfContainer.style.display = 'block';
 
-        products.forEach((p, index) => {
-            const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
-            const qty = isChecked ? weekRecords[p.id] : '-';
-            const status = isChecked ? '✓ Checked' : 'Unchecked';
-            const isLow = isChecked && p.minAlert !== null && Number(qty) <= p.minAlert;
+        const ITEMS_PER_PAGE = 22; // 每頁最多顯示 22 筆項目
+        const totalItems = products.length;
+        const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
 
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${index + 1}</td>
-                <td><strong>${p.name}</strong></td>
-                <td><strong>${qty}</strong> ${p.unit}</td>
-                <td>${status}</td>
-                <td style="color:${isLow ? 'red' : 'black'};">${isLow ? '⚠️ Stok Menipis' : 'Normal'}</td>
+        for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+            const pageDiv = document.createElement('div');
+            pageDiv.className = 'pdf-page';
+
+            const startIdx = pageIndex * ITEMS_PER_PAGE;
+            const pageProducts = products.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+            let rowsHTML = '';
+            pageProducts.forEach((p, index) => {
+                const globalIndex = startIdx + index + 1;
+                const isChecked = weekRecords[p.id] !== undefined && weekRecords[p.id] !== '';
+                const qty = isChecked ? weekRecords[p.id] : '-';
+                const status = isChecked ? '✓ Checked' : 'Unchecked';
+                const isLow = isChecked && p.minAlert !== null && Number(qty) <= p.minAlert;
+
+                rowsHTML += `
+                    <tr>
+                        <td style="width: 30px; text-align: center;">${globalIndex}</td>
+                        <td><strong>${p.name}</strong></td>
+                        <td><strong>${qty}</strong> ${p.unit}</td>
+                        <td>${status}</td>
+                        <td style="color:${isLow ? 'red' : 'black'};">${isLow ? '⚠️ Stok Menipis' : 'Normal'}</td>
+                    </tr>
+                `;
+            });
+
+            pageDiv.innerHTML = `
+                <div class="pdf-header">
+                    <h2 class="pdf-title">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
+                    <p class="pdf-meta">Periode: ${currentWeek} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')} (Halaman ${pageIndex + 1} dari ${totalPages})</p>
+                </div>
+                <table class="pdf-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px;">No</th>
+                            <th>Nama Produk</th>
+                            <th>Jumlah Stok</th>
+                            <th>Status</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHTML}
+                    </tbody>
+                </table>
             `;
-            pdfTbody.appendChild(tr);
-        });
 
-        element.style.position = 'relative';
-        element.style.left = '0';
+            pdfContainer.appendChild(pageDiv);
+        }
 
-        const opt = {
-            margin:       [12, 8, 15, 8],
-            filename:     `Laporan_Stok_DragonKoi_${currentWeek}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, scrollY: 0 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
-        };
+        const pages = pdfContainer.querySelectorAll('.pdf-page');
+        let worker = html2pdf().from(pages[0]).toPdf();
 
-        return html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf) => {
-            const totalPages = pdf.internal.getNumberOfPages();
-            for (let i = 1; i <= totalPages; i++) {
-                pdf.setPage(i);
-                pdf.setFontSize(9);
-                pdf.setTextColor(150);
-                pdf.text(`Page ${i} of ${totalPages}`, pdf.internal.pageSize.getWidth() - 25, pdf.internal.pageSize.getHeight() - 8);
-            }
-        }).output('blob').then((blob) => {
-            element.style.position = 'absolute';
-            element.style.left = '-9999px';
+        for (let i = 1; i < pages.length; i++) {
+            worker = worker.get('pdf').then((pdf) => {
+                pdf.addPage();
+            }).from(pages[i]).toContainer().toCanvas().toPdf();
+        }
+
+        return worker.output('blob').then((blob) => {
+            pdfContainer.style.display = 'none';
+            pdfContainer.innerHTML = '';
             return new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
         });
     }
