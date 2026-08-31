@@ -315,18 +315,16 @@
     .admin-only { display: none !important; }
     body.admin-mode .admin-only { display: inline-flex !important; }
 
-    /* PDF 渲染專用樣式 (優化相容性與跨頁) */
+    /* PDF 範本專用隱藏與渲染樣式 */
     #pdfTemplate {
-        position: fixed;
-        left: 0;
+        display: none; /* 平時徹底隱藏，不影響頁面版面 */
+        position: absolute;
+        left: -9999px;
         top: 0;
         width: 750px;
         background: #ffffff;
         padding: 20px;
         font-family: Arial, sans-serif;
-        opacity: 0;
-        pointer-events: none;
-        z-index: -9999;
     }
     #pdfTemplate table {
         width: 100%;
@@ -334,10 +332,10 @@
         margin-top: 12px;
     }
     #pdfTemplate thead {
-        display: table-header-group; /* 自動重複表頭 */
+        display: table-header-group;
     }
     #pdfTemplate tr {
-        page-break-inside: avoid; /* 防止品項被拆切 */
+        page-break-inside: avoid;
     }
     #pdfTemplate th, #pdfTemplate td {
         border: 1px solid #ddd;
@@ -435,7 +433,7 @@
     </div>
 </div>
 
-<!-- PDF 渲染 HTML 範本 -->
+<!-- PDF 渲染 HTML 範本 (完全隱藏) -->
 <div id="pdfTemplate">
     <h2 style="margin:0; color:#1e3c72;">🐉 Dragon Koi - Laporan Stok Mingguan</h2>
     <p style="margin:4px 0; font-size:13px; color:#555;" id="pdfMeta"></p>
@@ -655,7 +653,6 @@
         document.getElementById('progressBar').style.width = `${percent}%`;
     }
 
-    // 防抖機制 (Debounce)：避免連續敲擊數字時頻繁發送請求與重繪
     function debouncedCommitQty(productId, val) {
         if (debounceTimers[productId]) {
             clearTimeout(debounceTimers[productId]);
@@ -666,7 +663,6 @@
         }, 400);
     }
 
-    // 局部更新 (Update)：防止多人同時覆蓋整個周資料節點
     function commitQty(productId, val) {
         if (val === '') {
             db.ref(`inventory/${currentWeek}/${productId}`).remove();
@@ -788,8 +784,8 @@
         document.body.removeChild(link);
     }
 
-    // 產生 PDF File 物件 (高解析度/手機相容 + 頁碼 + 重複表頭)
-    function generatePDFFile() {
+    // 產生 PDF File 物件 (生成當下才短暫顯示，完畢後必定隱藏)
+    async function generatePDFFile() {
         const weekRecords = inventoryData[currentWeek] || {};
         const pdfMeta = document.getElementById('pdfMeta');
         const pdfTbody = document.getElementById('pdfTableBody');
@@ -815,8 +811,8 @@
             pdfTbody.appendChild(tr);
         });
 
-        // 截圖瞬間動態顯現，避免 Retina / 手機繪製空白
-        element.style.opacity = '1';
+        // 僅在截圖時才將 display 切換為 block
+        element.style.display = 'block';
 
         const opt = {
             margin:       [10, 8, 12, 8],
@@ -827,8 +823,8 @@
             pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
-        return html2pdf().set(opt).from(element).toPdf().get('jspdf').then((jspdf) => {
-            // 自動為每頁右下角加上頁碼 (Halaman X dari Y)
+        try {
+            const jspdf = await html2pdf().set(opt).from(element).toPdf().get('jspdf');
             const totalPages = jspdf.internal.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 jspdf.setPage(i);
@@ -836,49 +832,41 @@
                 jspdf.setTextColor(150);
                 jspdf.text(`Halaman ${i} dari ${totalPages}`, jspdf.internal.pageSize.getWidth() - 15, jspdf.internal.pageSize.getHeight() - 6, { align: 'right' });
             }
-        }).output('blob').then((blob) => {
-            // 擷取完成後恢復隱藏
-            element.style.opacity = '0';
+            const blob = await jspdf.output('blob');
             return new File([blob], `Laporan_Stok_DragonKoi_${currentWeek}.pdf`, { type: 'application/pdf' });
-        });
+        } finally {
+            // 無論成功或失敗，都強制藏回背景
+            element.style.display = 'none';
+        }
     }
 
-    // 在新分頁開啟預覽 PDF (若被彈跳視窗阻擋則自動改為背景下載)
-    function exportPDF() {
+    // 直接觸發檔案下載功能
+    async function exportPDF() {
         updateSyncStatus('⏳ Memproses PDF...', '#eab308');
-        
-        // 1. 點擊瞬間先開啟空白新分頁，避開瀏覽器阻擋機制
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-            newWindow.document.write('<div style="font-family:sans-serif; text-align:center; padding:50px;">⏳ Memuat PDF... Mohon tunggu.</div>');
-        }
-
-        generatePDFFile().then((file) => {
-            const fileURL = URL.createObjectURL(file);
+        try {
+            const file = await generatePDFFile();
+            const url = URL.createObjectURL(file);
             
-            if (newWindow) {
-                // 2. 將 PDF 網址寫入新分頁進行預覽
-                newWindow.location.href = fileURL;
-            } else {
-                // 若彈跳視窗被系統關閉，備援為直接下載機制
-                const a = document.createElement('a');
-                a.href = fileURL;
-                a.download = file.name;
-                document.body.appendChild(a);
-                a.click();
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
                 document.body.removeChild(a);
-            }
-            
+                URL.revokeObjectURL(url);
+            }, 1000);
+
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
-        }).catch(err => {
+        } catch (err) {
             console.error(err);
-            if (newWindow) newWindow.close();
             alert('Gagal membuat PDF!');
             updateSyncStatus('🟢 Terhubung ke Cloud', '#16a34a');
-        });
+        }
     }
 
-    // 透過 WhatsApp 分享 (支援手機原生 PDF 夾檔)
     async function sendToWhatsApp() {
         updateSyncStatus('⏳ Memyiapkan Laporan...', '#eab308');
         
@@ -905,7 +893,6 @@
                 msg += `\n*⚠️ STOK MENIPIS:*\n` + lowStockList.join('\n');
             }
 
-            // iOS / Android 原生分享面板
             if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     title: `Laporan Stok ${currentWeek}`,
@@ -913,7 +900,6 @@
                     files: [file]
                 });
             } else {
-                // 電腦版降級機制
                 const url = URL.createObjectURL(file);
                 const a = document.createElement('a');
                 a.href = url;
